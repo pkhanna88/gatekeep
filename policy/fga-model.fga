@@ -1,0 +1,40 @@
+model
+  schema 1.1
+
+type user
+
+type account
+  relations
+    define owner: [user]
+    define viewer: [user] or owner
+
+type opportunity
+  relations
+    define parent: [account]
+    define viewer: [user] or viewer from parent
+    define editor: [user] or owner from parent
+
+type invoice
+  relations
+    define parent: [account]
+    define viewer: [user] or viewer from parent
+    define editor: [user] or owner from parent
+
+type note
+  relations
+    define parent: [account]
+    define viewer: [user] or viewer from parent
+    define editor: [user] or owner from parent
+
+# Notes for the Day 2 model review
+#
+# 1. §3.4 only shows user / account / opportunity. Day 2 asks for account,
+#    opportunity, invoice, note. The three child types are identical here,
+#    which is a smell — worth asking whether they should collapse into one
+#    "record" type with a type attribute, or stay separate for auditability.
+#
+# 2. Note the asymmetry, and make sure you can explain it: `viewer` inherits
+#    from the parent's `viewer`, but `editor` inherits from the parent's
+#    `owner`. So being able to read an account does NOT let you write to
+#    things under it. §7.1 maps action=="write" to relation "editor", so this
+#    line is what stops a read-only analyst delegating write authority.

@@ -1,0 +1,110 @@
+# Gatekeep — Day 0 practice stack
+#
+# The five infrastructure services from the Day 1 INF task. No application
+# services (control-plane / token-service / pep-proxy / console) — those do not
+# exist yet. This exists so you can complete Appendix A's comprehension items
+# before the repo exists.
+#
+#   docker compose up -d
+#   docker compose ps        # wait for keycloak + openfga to be healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gatekeep
+      POSTGRES_PASSWORD: gatekeep
+      POSTGRES_DB: gatekeep
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gatekeep -d gatekeep"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      # See README "Issuer mismatch" — this is §3.3's first pitfall.
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: "8080"
+      KC_HOSTNAME_STRICT: "false"
+    volumes:
+      - ./deploy/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "8080:8080"   # http
+      - "9000:9000"   # management / health
+    healthcheck:
+      # The Keycloak image ships no curl or wget, so we use bash's /dev/tcp.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  openfga:
+    # PINNED. `latest` is not a version - it silently changes under you, and
+    # a security product with floating versions is not a security product.
+    # Bump deliberately, and note the reason in docs/DECISIONS.md.
+    image: openfga/openfga:v1.14.0
+    command: run
+    environment:
+      # Memory engine: dev only, and it forgets everything on restart.
+      # That is fine here because `make seed` is the source of truth.
+      OPENFGA_DATASTORE_ENGINE: memory
+      # info, not warn: the startup banner tells you whether the playground
+      # actually came up and on which address. Silencing that costs more
+      # debugging time than the noise saves.
+      OPENFGA_LOG_LEVEL: info
+      OPENFGA_PLAYGROUND_ENABLED: "true"
+      # MUST be 0.0.0.0, not the default. Left unset, the playground binds to
+      # 127.0.0.1 INSIDE the container, which Docker cannot forward to from
+      # the host - you get "connection reset" with a perfectly healthy server.
+      # Port 3001 keeps 3000 free for the Next.js console.
+      OPENFGA_PLAYGROUND_ADDR: "0.0.0.0:3001"
+    ports:
+      - "8081:8080"   # http  — handbook §3.10 assigns openfga to host 8081
+      - "8082:8081"   # grpc
+      - "3001:3001"   # playground → http://localhost:3001/playground
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8081"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  openbao:
+    image: openbao/openbao:2.4.3
+    command: server -dev -dev-listen-address=0.0.0.0:8200
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: root
+      BAO_ADDR: http://127.0.0.1:8200
+    cap_add: ["IPC_LOCK"]
+    ports: ["8200:8200"]
+    healthcheck:
+      test: ["CMD", "bao", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:

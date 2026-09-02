@@ -1,0 +1,79 @@
+{
+  "realm": "gatekeep",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "roles": {
+    "realm": [
+      { "name": "analyst", "description": "Can request and approve their own grants" },
+      { "name": "security-admin", "description": "Can use the kill switch" },
+      { "name": "auditor", "description": "Read-only access to the audit chain" }
+    ]
+  },
+  "users": [
+    {
+      "username": "priya@acme.test",
+      "email": "priya@acme.test",
+      "firstName": "Priya",
+      "lastName": "Sharma",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "priya", "temporary": false }
+      ],
+      "realmRoles": ["analyst"]
+    },
+    {
+      "username": "admin@acme.test",
+      "email": "admin@acme.test",
+      "firstName": "Aditi",
+      "lastName": "Rao",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "admin", "temporary": false }
+      ],
+      "realmRoles": ["security-admin"]
+    },
+    {
+      "username": "auditor@acme.test",
+      "email": "auditor@acme.test",
+      "firstName": "Sam",
+      "lastName": "Okafor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "auditor", "temporary": false }
+      ],
+      "realmRoles": ["auditor"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "gatekeep-console",
+      "name": "Gatekeep Console",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      }
+    },
+    {
+      "clientId": "gatekeep-control-plane",
+      "name": "Gatekeep Control Plane",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-control-plane-secret-not-for-production",
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ]
+}

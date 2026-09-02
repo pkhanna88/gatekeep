@@ -1,0 +1,74 @@
+name: CI
+
+# Runs on every push and every pull request. The important job is `stack`:
+# it starts the whole thing from a clean checkout on a machine nobody has
+# ever touched. If that passes, "it works on my machine" stops being a
+# thing anyone can say.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Check formatting
+        run: ruff format --check .
+      - name: Check for lint errors
+        run: ruff check .
+      - name: Reject unverified JWT decoding outside exercises
+        # Section 9.2 asks for this in code review. A grep is cheaper and
+        # never forgets.
+        run: |
+          if grep -rn --include='*.py' \
+               -e 'verify=False' -e 'verify_signature.*False' \
+               services/ tools/ sdk/python/ 2>/dev/null; then
+            echo "::error::Unverified JWT decoding found on a service path"
+            exit 1
+          fi
+          echo "Clean."
+
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Wait for everything to report healthy
+        run: |
+          for i in $(seq 1 60); do
+            unhealthy=$(docker compose ps --format '{{.Name}} {{.Health}}' \
+                        | grep -v ' healthy$' | wc -l)
+            if [ "$unhealthy" -eq 0 ]; then
+              echo "All services healthy after ${i}0s."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Services did not become healthy in 10 minutes"
+          docker compose ps
+          exit 1
+
+      - name: Run the smoke test
+        run: pytest tests/ -v
+
+      - name: Show logs if anything failed
+        if: failure()
+        run: docker compose logs --tail=100
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

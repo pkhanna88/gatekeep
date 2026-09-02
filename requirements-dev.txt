@@ -1,0 +1,6 @@
+# Tooling everyone needs. Service dependencies live in each service folder.
+ruff==0.6.9
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2
+pyjwt[crypto]==2.9.0
