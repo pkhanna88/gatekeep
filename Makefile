@@ -12,10 +12,10 @@ PIP    := $(VENV)/bin/pip
 PYTEST := $(VENV)/bin/pytest
 RUFF   := $(VENV)/bin/ruff
 
-.PHONY: help setup check-venv preflight dev down clean logs ps urls migrate seed test smoke lint fmt jwt demo-reset
+.PHONY: help setup check-venv preflight dev down clean logs ps urls migrate seed test smoke lint fmt jwt fga-explain demo-week1 demo-reset
 
 help:                    ## Show this list
-	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^[a-z0-9-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 setup:                   ## One-time: build the virtual environment and install tools
@@ -35,6 +35,9 @@ setup:                   ## One-time: build the virtual environment and install 
 	$$BASE -m venv $(VENV)
 	@$(PIP) install -q --upgrade pip
 	@$(PIP) install -q -r requirements-dev.txt
+	@for r in services/*/requirements.txt; do \
+	  [ -f "$$r" ] && $(PIP) install -q -r "$$r"; \
+	done; true
 	@echo "Ready:  $$($(PY) --version)"
 	@echo "You do NOT need to activate anything. Just run 'make smoke'."
 
@@ -91,11 +94,11 @@ logs:                    ## Follow the logs
 ps:                      ## What is running
 	docker compose ps
 
-migrate:                 ## Apply database schema  [BE1 owns this - Day 1]
-	@echo "No migrations yet. BE1 wires alembic into this target on Day 1."
+migrate: check-venv      ## Apply database schema  [INF stand-in - BE1 owns this]
+	$(PY) services/control-plane/migrations/apply.py
 
 seed: check-venv         ## Load the policy model, tuples and demo data
-	$(PY) exercises/fga_check.py
+	$(PY) deploy/seed/seed.py
 
 jwt: check-venv          ## Appendix A: look inside a token
 	$(PY) exercises/jwt_exercise.py
@@ -114,6 +117,12 @@ fmt: check-venv          ## Fix formatting automatically
 	$(RUFF) format .
 	$(RUFF) check --fix .
 
+fga-explain: check-venv  ## Ask the policy engine a question and see why it answered
+	@$(PY) tools/fga_explain.py
+
+demo-week1: check-venv   ## Week 1 demo: identity, per-record policy, tamper-evident log
+	@$(PY) tools/week1_demo.py $(if $(PAUSE),--pause,)
+
 demo-reset:              ## Back to a clean demo state  [Day 18]
 	@echo "Not built yet. Owned by INF on Day 18."
 
@@ -121,7 +130,7 @@ urls:                    ## Where everything lives
 	@echo "Keycloak admin      http://localhost:8080          (admin / admin)"
 	@echo "Realm discovery     http://localhost:8080/realms/gatekeep/.well-known/openid-configuration"
 	@echo "OpenFGA API         http://localhost:8081"
-	@echo "OpenFGA playground  DISABLED - browsers block it, see docs/DECISIONS.md"
+	@echo "Policy explainer    make fga-explain      (replaces the playground)"
 	@echo "OpenBao             http://localhost:8200          (token: root)"
 	@echo "Postgres            postgres://gatekeep:gatekeep@localhost:5432/gatekeep"
 	@echo ""

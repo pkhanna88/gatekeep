@@ -1,0 +1,149 @@
+{
+  "_comment": [
+    "The Day 2 model from handbook section 3.4, expressed as the JSON the OpenFGA",
+    "HTTP API accepts. policy/fga-model.fga is the human-readable source of truth;",
+    "tests/test_policy_model.py asserts the two never drift apart.",
+    "",
+    "Four object types, per the Day 2 brief: account, opportunity, invoice, note.",
+    "The three child types are deliberately identical - see docs/DECISIONS.md,",
+    "Day 2, 'child record types stay separate'."
+  ],
+  "schema_version": "1.1",
+  "type_definitions": [
+    { "type": "user" },
+    {
+      "type": "account",
+      "relations": {
+        "owner": { "this": {} },
+        "viewer": {
+          "union": {
+            "child": [{ "this": {} }, { "computedUserset": { "relation": "owner" } }]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "owner": { "directly_related_user_types": [{ "type": "user" }] },
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] }
+        }
+      }
+    },
+    {
+      "type": "opportunity",
+      "relations": {
+        "parent": { "this": {} },
+        "viewer": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "relation": "parent" },
+                  "computedUserset": { "relation": "viewer" }
+                }
+              }
+            ]
+          }
+        },
+        "editor": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "relation": "parent" },
+                  "computedUserset": { "relation": "owner" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "parent": { "directly_related_user_types": [{ "type": "account" }] },
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] },
+          "editor": { "directly_related_user_types": [{ "type": "user" }] }
+        }
+      }
+    },
+    {
+      "type": "invoice",
+      "relations": {
+        "parent": { "this": {} },
+        "viewer": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "relation": "parent" },
+                  "computedUserset": { "relation": "viewer" }
+                }
+              }
+            ]
+          }
+        },
+        "editor": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "relation": "parent" },
+                  "computedUserset": { "relation": "owner" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "parent": { "directly_related_user_types": [{ "type": "account" }] },
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] },
+          "editor": { "directly_related_user_types": [{ "type": "user" }] }
+        }
+      }
+    },
+    {
+      "type": "note",
+      "relations": {
+        "parent": { "this": {} },
+        "viewer": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "relation": "parent" },
+                  "computedUserset": { "relation": "viewer" }
+                }
+              }
+            ]
+          }
+        },
+        "editor": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "relation": "parent" },
+                  "computedUserset": { "relation": "owner" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "parent": { "directly_related_user_types": [{ "type": "account" }] },
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] },
+          "editor": { "directly_related_user_types": [{ "type": "user" }] }
+        }
+      }
+    }
+  ]
+}

@@ -15,6 +15,8 @@ git clone <repo-url> && cd gatekeep
 
 make setup                         # one time: builds .venv, installs tools
 make dev                           # start everything, wait for it to be ready
+make migrate                       # apply the database schema
+make seed                          # policy model, tuples, signing key
 make smoke                         # confirm your machine is genuinely working
 make urls                          # logins and addresses
 ```
@@ -52,6 +54,16 @@ Run `make help` for everything else.
 | Postgres | 5432 | Grants, agents, and the audit trail. |
 | Redis | 6379 | Fast lookups for "has this been cancelled?" and rate counters. |
 
+To build intuition for the permission model before you write policy code, use:
+
+```bash
+make fga-explain                      # walk the seeded examples
+make fga-explain U=priya@acme.test R=viewer O=opportunity:0065g00001NWD
+```
+
+It prints the inheritance path the engine actually took, which is what
+Appendix A asks you to be able to explain out loud.
+
 **The built-in OpenFGA playground is disabled, and it is not a setting you
 should turn back on.** It is a page that loads a remote website
 (`play.fga.dev`) in a frame, and that public page then has to call the API on
@@ -59,8 +71,6 @@ your own machine. Chrome, Safari and Firefox now all block that. It cannot be
 fixed from our side — the documented server-side opt-in header was tested and
 every browser still refused — and it is deprecated upstream anyway. Reasoning
 in `docs/DECISIONS.md`.
-
-To run a check by hand in the meantime, use `python3 exercises/fga_check.py`.
 
 ---
 
@@ -120,11 +130,22 @@ docs/                     architecture, security, decisions
 Appendix A of the handbook. Work through it on your first morning:
 
 ```bash
-make dev && make smoke        # environment
-make jwt                      # look at a token
-python3 exercises/fga_check.py  # run a permission check and read the reasoning
+make dev && make migrate && make seed   # environment
+make test                               # everything, on a clean checkout
+make jwt                                # look at a token
+python3 exercises/fga_check.py          # then ask your own with make fga-explain
 ```
 
-`fga_check.py` prints the inheritance path in the words Appendix A asks you to
-be able to say out loud. Read the explanation it ends with — that is the
-comprehension item, not the fact that it exits zero.
+`make seed` prints the policy acceptance matrix as it runs. Six of the eleven
+checks must come back `False` — the denials are the part that matters.
+
+To see what exists so far as a narrative rather than test output:
+
+```bash
+make demo-week1               # identity, per-record policy, tamper-evident log
+make demo-week1 PAUSE=1       # stop between beats, for showing to someone
+```
+
+It asserts every step and exits non-zero if anything misbehaves, so it is a
+regression check as well as a demo. It does not cover the console, token
+exchange, the PEP or the kill switch, because those do not exist yet.

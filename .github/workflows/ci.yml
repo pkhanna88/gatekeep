@@ -42,7 +42,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
+      - name: Install tooling and service dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          for r in services/*/requirements.txt; do
+            [ -f "$r" ] && pip install -r "$r"
+          done
 
       - name: Start the stack
         run: docker compose up -d
@@ -62,8 +67,23 @@ jobs:
           docker compose ps
           exit 1
 
+      - name: Apply the database schema
+        # The audit chain tests need audit_events and the gatekeep_app role.
+        run: python services/control-plane/migrations/apply.py
+
+      - name: Seed the policy model and the signing key
+        # Day 3 + Day 6. Without this the stack is up but empty, and `up`
+        # proving nothing is exactly the failure this job exists to catch.
+        run: python deploy/seed/seed.py
+
       - name: Run the smoke test
         run: pytest tests/ -v
+
+      - name: Run the Week 1 demo
+        # Section 3.10: any manual step that is not scripted will be forgotten
+        # and will break a demo. This one asserts every beat and exits non-zero,
+        # so it cannot quietly stop working between rehearsals.
+        run: NO_COLOR=1 python tools/week1_demo.py
 
       - name: Show logs if anything failed
         if: failure()

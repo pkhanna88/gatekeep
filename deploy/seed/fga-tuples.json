@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "Demo relationship facts. Two accounts, deliberately:",
+    "",
+    "  0015g00001XYZ  Northwind Traders  - the account the demo agent works on.",
+    "                                      Priya owns it, so she can read AND write",
+    "                                      its children. This is the happy path.",
+    "  0015g00099ABC  Contoso Ltd        - nobody holds anything on it. This is what",
+    "                                      makes the Invariant 1 rejection and the",
+    "                                      section 10.1 step 6 denial demonstrable.",
+    "",
+    "Both IDs are taken from the handbook verbatim (sections 6.1 and 6.3) so the",
+    "documented error message is reproducible against real seed data.",
+    "",
+    "auditor@acme.test is viewer-but-not-owner on Northwind on purpose: it is the",
+    "only way to prove the viewer/editor asymmetry that stops a read-only user",
+    "delegating write authority. See tests/test_policy_model.py.",
+    "",
+    "admin@acme.test has NO tuples at all. Being a security admin in Keycloak is not",
+    "data access - that separation is worth showing a CISO."
+  ],
+  "tuples": [
+    {
+      "user": "user:priya@acme.test",
+      "relation": "owner",
+      "object": "account:0015g00001XYZ"
+    },
+    {
+      "user": "user:auditor@acme.test",
+      "relation": "viewer",
+      "object": "account:0015g00001XYZ"
+    },
+    {
+      "user": "account:0015g00001XYZ",
+      "relation": "parent",
+      "object": "opportunity:0065g00001NWD"
+    },
+    {
+      "user": "account:0015g00001XYZ",
+      "relation": "parent",
+      "object": "invoice:0INV00001NWD"
+    },
+    {
+      "user": "account:0015g00001XYZ",
+      "relation": "parent",
+      "object": "note:0NOT00001NWD"
+    },
+    {
+      "user": "account:0015g00099ABC",
+      "relation": "parent",
+      "object": "opportunity:0065g00099CTO"
+    },
+    {
+      "user": "account:0015g00099ABC",
+      "relation": "parent",
+      "object": "invoice:0INV00099CTO"
+    }
+  ]
+}

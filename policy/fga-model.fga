@@ -26,15 +26,30 @@ type note
     define viewer: [user] or viewer from parent
     define editor: [user] or owner from parent
 
-# Notes for the Day 2 model review
+# Day 2 model review — both questions resolved. See docs/DECISIONS.md.
 #
-# 1. §3.4 only shows user / account / opportunity. Day 2 asks for account,
-#    opportunity, invoice, note. The three child types are identical here,
-#    which is a smell — worth asking whether they should collapse into one
-#    "record" type with a type attribute, or stay separate for auditability.
+# 1. The three child types are identical, which looks like duplication worth
+#    collapsing into one "record" type with a type attribute. We keep them
+#    separate. §5.3 puts the resource type inside the scope string
+#    (system:type:action:id), and §7.1 and §7.2 both build the OpenFGA object
+#    straight from it — `object=f"{rtype}:{rid}"`. One type per scope type means
+#    that line stays a concatenation. Collapsing would put a translation table
+#    on the enforcement path, which is the last place extra logic belongs.
+#    Auditors also ask "who can view invoices"; separate types answer it
+#    directly. The cost is three mechanical blocks, which is the cheaper half
+#    of the trade.
 #
-# 2. Note the asymmetry, and make sure you can explain it: `viewer` inherits
-#    from the parent's `viewer`, but `editor` inherits from the parent's
-#    `owner`. So being able to read an account does NOT let you write to
-#    things under it. §7.1 maps action=="write" to relation "editor", so this
-#    line is what stops a read-only analyst delegating write authority.
+# 2. The asymmetry is deliberate. `viewer` inherits from the parent's `viewer`,
+#    but `editor` inherits from the parent's `owner`. Being able to read an
+#    account does NOT let you write to things under it. §7.1 maps
+#    action=="write" to relation "editor", so this line is what stops a
+#    read-only analyst delegating write authority.
+#
+#    It is now enforced rather than remembered: deploy/seed/fga-checks.json
+#    asserts that auditor@acme.test — a viewer on Northwind, never an owner —
+#    is refused `editor` on its children. `make seed` and CI both run it.
+#
+# This file is the human-readable source of truth. deploy/seed/fga-model.json
+# is the same model in the form the HTTP API accepts, because transpiling the
+# DSL needs the `fga` CLI and we did not want that in everyone's path on Day 1.
+# tests/test_policy_model.py asserts the two never drift apart.

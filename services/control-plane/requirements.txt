@@ -1,0 +1,6 @@
+# Control plane service dependencies.
+#
+# Kept out of requirements-dev.txt on purpose: that file is "tooling everyone
+# needs", and not every engineer needs a Postgres driver to run the linter.
+# `make setup` and CI both install every services/*/requirements.txt on top.
+asyncpg==0.31.0

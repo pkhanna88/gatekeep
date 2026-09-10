@@ -1,0 +1,92 @@
+{
+  "_comment": [
+    "The acceptance matrix for the policy model. `make seed` runs every row and",
+    "refuses to report success if any answer differs from `expect`.",
+    "",
+    "Day 3 asks INF to verify relationship queries by hand in the playground. This",
+    "file is that verification written down, so it runs on every seed and in CI",
+    "rather than living in someone's memory of an afternoon.",
+    "",
+    "The negatives matter more than the positives. A model that says yes correctly",
+    "and never says no is not an authorization model."
+  ],
+  "checks": [
+    {
+      "user": "user:priya@acme.test",
+      "relation": "viewer",
+      "object": "opportunity:0065g00001NWD",
+      "expect": true,
+      "why": "No direct tuple. viewer from parent -> account.viewer -> `[user] or owner`, and Priya owns Northwind. Two hops, zero roles."
+    },
+    {
+      "user": "user:priya@acme.test",
+      "relation": "editor",
+      "object": "opportunity:0065g00001NWD",
+      "expect": true,
+      "why": "Write authority, inherited via `owner from parent`."
+    },
+    {
+      "user": "user:priya@acme.test",
+      "relation": "viewer",
+      "object": "invoice:0INV00001NWD",
+      "expect": true,
+      "why": "Same inheritance on a second child type."
+    },
+    {
+      "user": "user:priya@acme.test",
+      "relation": "editor",
+      "object": "note:0NOT00001NWD",
+      "expect": true,
+      "why": "The note the demo agent writes its reconciliation summary to."
+    },
+    {
+      "user": "user:priya@acme.test",
+      "relation": "viewer",
+      "object": "opportunity:0065g00099CTO",
+      "expect": false,
+      "why": "Contoso's opportunity. No path from Priya, so no access. This is the section 10.1 step 6 denial."
+    },
+    {
+      "user": "user:priya@acme.test",
+      "relation": "viewer",
+      "object": "account:0015g00099ABC",
+      "expect": false,
+      "why": "The account itself. Backs the handbook's documented Invariant 1 rejection message."
+    },
+    {
+      "user": "user:auditor@acme.test",
+      "relation": "viewer",
+      "object": "opportunity:0065g00001NWD",
+      "expect": true,
+      "why": "viewer inherits the parent's viewer, so a read-only user can read children."
+    },
+    {
+      "user": "user:auditor@acme.test",
+      "relation": "editor",
+      "object": "opportunity:0065g00001NWD",
+      "expect": false,
+      "why": "THE ASYMMETRY. editor inherits the parent's OWNER, not its viewer. Being able to read an account does not let you write to things under it - this is the line that stops a read-only analyst delegating write authority."
+    },
+    {
+      "user": "user:auditor@acme.test",
+      "relation": "editor",
+      "object": "note:0NOT00001NWD",
+      "expect": false,
+      "why": "Same asymmetry, on the type the agent actually writes to."
+    },
+    {
+      "user": "user:admin@acme.test",
+      "relation": "viewer",
+      "object": "opportunity:0065g00001NWD",
+      "expect": false,
+      "why": "A Keycloak security-admin holds the kill switch, not the data. Authority in the IdP is not authority over records."
+    },
+    {
+      "user": "user:ravi@acme.test",
+      "relation": "viewer",
+      "object": "opportunity:0065g00001NWD",
+      "expect": false,
+      "why": "A principal with no tuples at all. Deny by default, with nothing configured to make it so."
+    }
+  ]
+}

@@ -8,5 +8,10 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "services"]
+# Lets tests import the control plane as `app.audit`. Note that section 4.6
+# gives every service an `app/` package, so when token-service and pep-proxy
+# land these will collide on this path and each service will need either a
+# distinct package name or its own pytest invocation. Fine while there is one.
+pythonpath = ["services/control-plane"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
