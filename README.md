@@ -52,8 +52,15 @@ Run `make help` for everything else.
 | Postgres | 5432 | Grants, agents, and the audit trail. |
 | Redis | 6379 | Fast lookups for "has this been cancelled?" and rate counters. |
 
-The playground at `http://localhost:3001/playground` is worth an hour before
-you write any policy code.
+**The built-in OpenFGA playground is disabled, and it is not a setting you
+should turn back on.** It is a page that loads a remote website
+(`play.fga.dev`) in a frame, and that public page then has to call the API on
+your own machine. Chrome, Safari and Firefox now all block that. It cannot be
+fixed from our side — the documented server-side opt-in header was tested and
+every browser still refused — and it is deprecated upstream anyway. Reasoning
+in `docs/DECISIONS.md`.
+
+To run a check by hand in the meantime, use `python3 exercises/fga_check.py`.
 
 ---
 
@@ -115,5 +122,9 @@ Appendix A of the handbook. Work through it on your first morning:
 ```bash
 make dev && make smoke        # environment
 make jwt                      # look at a token
-python3 exercises/fga_check.py  # then redo it by hand in the playground
+python3 exercises/fga_check.py  # run a permission check and read the reasoning
 ```
+
+`fga_check.py` prints the inheritance path in the words Appendix A asks you to
+be able to say out loud. Read the explanation it ends with — that is the
+comprehension item, not the fact that it exits zero.

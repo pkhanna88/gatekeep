@@ -121,7 +121,7 @@ urls:                    ## Where everything lives
 	@echo "Keycloak admin      http://localhost:8080          (admin / admin)"
 	@echo "Realm discovery     http://localhost:8080/realms/gatekeep/.well-known/openid-configuration"
 	@echo "OpenFGA API         http://localhost:8081"
-	@echo "OpenFGA playground  http://localhost:3001/playground"
+	@echo "OpenFGA playground  DISABLED - browsers block it, see docs/DECISIONS.md"
 	@echo "OpenBao             http://localhost:8200          (token: root)"
 	@echo "Postgres            postgres://gatekeep:gatekeep@localhost:5432/gatekeep"
 	@echo ""

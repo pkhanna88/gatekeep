@@ -87,7 +87,7 @@ MODEL = {
 }
 
 TUPLES = [
-    {"user": "user:priya@acme.com", "relation": "owner", "object": "account:northwind"},
+    {"user": "user:priya@acme.test", "relation": "owner", "object": "account:northwind"},
     {"user": "account:northwind", "relation": "parent", "object": "opportunity:0065g"},
 ]
 
@@ -110,13 +110,13 @@ def main() -> int:
         checks = [
             # The one that matters. Priya has NO direct tuple on this
             # opportunity — the True comes entirely from inheritance.
-            ("user:priya@acme.com", "viewer", "opportunity:0065g", True),
+            ("user:priya@acme.test", "viewer", "opportunity:0065g", True),
             # Write authority: also inherited, but via `owner from parent`.
-            ("user:priya@acme.com", "editor", "opportunity:0065g", True),
+            ("user:priya@acme.test", "editor", "opportunity:0065g", True),
             # A different account's opportunity — no path, so no access.
-            ("user:priya@acme.com", "viewer", "opportunity:0099x", False),
+            ("user:priya@acme.test", "viewer", "opportunity:0099x", False),
             # Someone with no tuples at all.
-            ("user:ravi@acme.com", "viewer", "opportunity:0065g", False),
+            ("user:ravi@acme.test", "viewer", "opportunity:0065g", False),
         ]
 
         failures = 0

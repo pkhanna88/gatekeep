@@ -72,22 +72,57 @@ services:
       # Memory engine: dev only, and it forgets everything on restart.
       # That is fine here because `make seed` is the source of truth.
       OPENFGA_DATASTORE_ENGINE: memory
-      # info, not warn: the startup banner tells you whether the playground
-      # actually came up and on which address. Silencing that costs more
-      # debugging time than the noise saves.
+      # info, not warn: the startup banner prints the resolved config, which is
+      # how the playground port mismatch below was finally spotted. Silencing it
+      # costs more debugging time than the noise saves.
       OPENFGA_LOG_LEVEL: info
-      OPENFGA_PLAYGROUND_ENABLED: "true"
-      # MUST be 0.0.0.0, not the default. Left unset, the playground binds to
-      # 127.0.0.1 INSIDE the container, which Docker cannot forward to from
-      # the host - you get "connection reset" with a perfectly healthy server.
-      # Port 3001 keeps 3000 free for the Next.js console.
-      OPENFGA_PLAYGROUND_ADDR: "0.0.0.0:3001"
+      # DISABLED. The built-in playground cannot work in any current browser,
+      # and this is not a misconfiguration we can fix.
+      #
+      # /playground is a tiny page wrapping an iframe to the REMOTE site
+      # play.fga.dev. That public page then has to call our API on 127.0.0.1,
+      # and every engine now refuses to let a public site reach the loopback
+      # address space. Verified on all three, September 2026:
+      #
+      #   Chrome   "Permission was denied for this request to access the
+      #             `loopback` address space"
+      #   WebKit   "Not allowed to request resource"
+      #   Firefox  NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED
+      #
+      # Not fixable from our side either. The documented opt-in is for the
+      # server to send Access-Control-Allow-Private-Network; that was tested
+      # with a proxy that does send it, and all three engines still refused
+      # (Chrome ERR_FAILED, WebKit no request at all, Firefox
+      # NS_BINDING_ABORTED). Browsers have moved past header-based opt-in to
+      # blocking outright. The only other route is telling engineers to switch
+      # off a browser security feature, which is not something we are going to
+      # do while building a security product.
+      #
+      # It is also deprecated upstream, and it puts the API token in a URL
+      # handed to a third-party origin - the shape of CVE-2026-40293.
+      #
+      # Replacement policy tooling arrives with the policy model work. Until
+      # then, exercises/fga_check.py answers checks from the command line.
+      OPENFGA_PLAYGROUND_ENABLED: "false"
+      # Container ports deliberately match the ports we publish.
+      #
+      # This started as a playground fix. OpenFGA advertises its own address to
+      # clients, built from whatever port it is listening on INSIDE the
+      # container, so the natural mapping "8081:8080" made it tell browsers to
+      # call 127.0.0.1:8080 — which on this host is Keycloak. That cost real
+      # debugging time before anyone noticed the port in the error.
+      #
+      # The playground is disabled now for an unrelated reason (see above), but
+      # keeping inside and outside identical stays worth it: anything OpenFGA
+      # says about where to reach it is then also true from the host. Host
+      # addresses are unchanged — 8081 http, 8082 grpc.
+      OPENFGA_HTTP_ADDR: "0.0.0.0:8081"
+      OPENFGA_GRPC_ADDR: "0.0.0.0:8082"
     ports:
-      - "8081:8080"   # http  — handbook §3.10 assigns openfga to host 8081
-      - "8082:8081"   # grpc
-      - "3001:3001"   # playground → http://localhost:3001/playground
+      - "8081:8081"   # http  — handbook §3.10 assigns openfga to host 8081
+      - "8082:8082"   # grpc
     healthcheck:
-      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8081"]
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8082"]
       interval: 5s
       timeout: 10s
       retries: 20
