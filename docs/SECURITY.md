@@ -1,8 +1,9 @@
 # Gatekeep — security posture and honest limitations
 
-**Status: Day 5 skeleton.** Structure and the parts the design already settles.
-First real draft Day 8 (§8, Week 2). Completed Day 19, after the Day 22
-adversarial day has produced findings to record.
+**Status: Day 8 draft.** The control plane, token service and PEP now exist,
+so the statuses below reflect running, tested code (`tests/test_delegation.py`).
+Completed Day 19, after the Day 22 adversarial day has produced findings to
+record.
 
 This document is written for a customer's security architect, not for us. It is
 deliberate that it leads with what we do not do. §3.11: *CISOs respect a team
@@ -42,10 +43,10 @@ Gatekeep is the third option.
 
 | Property | Meaning | Status |
 |---|---|---|
-| Delegation | The agent acts as a named human, never more than that human holds | 🔶 |
-| Fine-grained scope | Authority per record and per action, not per application | ✅ policy model; 🔶 enforcement |
-| Defensible audit | A verifiable chain from human intent to individual record actions | ✅ chain; 🔶 emission from services |
-| Instant revocation | One control, whole estate, effective in seconds | ⬜ |
+| Delegation | The agent acts as a named human, never more than that human holds | ✅ Invariants 1 and 2, `sub`/`act.sub` token |
+| Fine-grained scope | Authority per record and per action, not per application | ✅ policy model and PEP enforcement |
+| Defensible audit | A verifiable chain from human intent to individual record actions | ✅ chain, emitted by all three services |
+| Instant revocation | One control, whole estate, effective in seconds | ✅ kill switch; measured ~20 ms to first refusal on a laptop |
 
 ---
 
@@ -57,11 +58,11 @@ verification on the enforcement path is intentional.
 
 | Boundary | We trust | We verify | Status |
 |---|---|---|---|
-| Human → Console | Nothing | OIDC signature, issuer, expiry, audience | ✅ realm issues a verifiable `aud` and `principal`; 🔶 console |
+| Human → Console | Nothing | OIDC signature, issuer, expiry, audience | ✅ control plane verifies all four; ⬜ web console (terminal `tools/gk.py` stands in) |
 | Console → Control Plane | Nothing | Bearer token, role claims | ✅ roles reach the token and do not leak across users |
-| Agent → Token Service | Nothing | Bootstrap credential hash, grant status | ⬜ |
-| Agent → PEP | Nothing | Signature, expiry, revocation, scope, policy | ⬜ |
-| PEP → target system | Connector credentials | TLS certificate | ⬜ |
+| Agent → Token Service | Nothing | Bootstrap credential hash, grant status | ✅ argon2id; grant issued to this agent, active, unexpired, unrevoked |
+| Agent → PEP | Nothing | Signature, expiry, revocation, scope, policy | ✅ RS256 only, JWKS by `kid`; tampered, wrong-key, `alg: none` and expired tokens tested |
+| PEP → target system | Connector credentials | TLS certificate | 🔶 mock only: connector credential held by the PEP alone; no TLS locally |
 | Service → Postgres | Network isolation | — | ✅ services connect as a non-owner role (§7) |
 
 ---
@@ -73,12 +74,12 @@ default for a security product and we state it without hedging.
 
 | Failure | Behaviour | Status |
 |---|---|---|
-| Control Plane down | No new grants or approvals. Existing tokens work until expiry (max 5 min), then agents stop | 🔶 |
-| Token Service down | No new or refreshed tokens. Agents drain within 5 minutes | 🔶 |
-| PEP down | All agent access stops immediately | 🔶 |
-| Redis down | Fall through to Postgres. Slower, still correct | 🔶 |
-| Postgres down | Deny everything. We cannot verify revocation, so we must not allow | 🔶 |
-| OpenFGA down | Deny everything. No policy decision means no access | 🔶 |
+| Control Plane down | No new grants or approvals. Existing tokens work until expiry (max 5 min), then agents stop | ✅ PEP and token service do not call it |
+| Token Service down | No new or refreshed tokens. Agents drain within 5 minutes | ✅ PEP caches JWKS; ⬜ failure-injection test |
+| PEP down | All agent access stops immediately | ✅ agents hold no upstream credential |
+| Redis down | Fall through to Postgres. Slower, still correct | ✅ Postgres is consulted on every request anyway (DECISIONS); flush tested, ⬜ outage test |
+| Postgres down | Deny everything. We cannot verify revocation, so we must not allow | ✅ code path (503); ⬜ failure-injection test |
+| OpenFGA down | Deny everything. No policy decision means no access | ✅ code path (503 at PEP, approval refused); ⬜ failure-injection test |
 
 The five-minute token lifetime is what makes this tractable: worst case, a
 revoked grant remains usable for five minutes without any real-time revocation
@@ -94,12 +95,12 @@ control, and its test. **[Day 19]** adds the Day 22 adversarial findings.
 
 | Threat | Primary mitigation | Status |
 |---|---|---|
-| Spoofing — pretending to be someone else | Signed tokens, verified issuer and audience | 🔶 |
-| Tampering — modifying data in transit or at rest | Signatures, hash-chained audit, TLS | ✅ audit chain; 🔶 rest |
-| Repudiation — denying you did something | Dual identity in the token (`sub` human, `act.sub` agent) plus the audit chain | 🔶 |
+| Spoofing — pretending to be someone else | Signed tokens, verified issuer and audience | ✅ |
+| Tampering — modifying data in transit or at rest | Signatures, hash-chained audit, TLS | ✅ audit chain and token signatures; ⬜ TLS |
+| Repudiation — denying you did something | Dual identity in the token (`sub` human, `act.sub` agent) plus the audit chain | ✅ |
 | Information disclosure — leaking data | Digests never bodies, minimal claims, no secrets in tokens | ✅ by construction (§6) |
-| Denial of service | Rate limits, request size caps | ⬜ |
-| **Elevation of privilege** | Invariant 1 and Invariant 2, deny-by-default at the PEP | 🔶 |
+| Denial of service | Rate limits, request size caps | 🔶 64 KB body cap at the PEP; ⬜ rate limits (see 8.7, 8.8) |
+| **Elevation of privilege** | Invariant 1 and Invariant 2, deny-by-default at the PEP | ✅ |
 
 Elevation of privilege is our most important class. Two invariants defend it:
 
@@ -108,9 +109,11 @@ Elevation of privilege is our most important class. Two invariants defend it:
 - **Invariant 2** — a token may never contain a scope broader than its grant.
   Checked at issuance.
 
-Neither is implemented yet; both are BE1/BE2 work in Week 2. The policy model
-they will check against **is** in place and tested — including the asymmetry
-that stops a read-only user delegating write authority (§5).
+Both are implemented and tested (`test_grant_cannot_exceed_principal`,
+`test_token_scope_subset_of_grant`), and the PEP enforces the token's scope again
+on every request. A third check closes the gap between approval and use: the PEP
+asks OpenFGA whether the human *still* holds each record, so withdrawing
+someone's access stops their agents too (`test_policy_denial_after_rights_withdrawn`).
 
 ---
 
@@ -143,7 +146,7 @@ This is not a preference. Storing the contents of records an agent touched would
 make Gatekeep a data-breach liability and would end enterprise deals in security
 review. The audit schema has a `payload_digest` column and no body column, and
 §9.1 requires a test that scans audit rows for anything resembling record
-content. **[Day 8]** — that test is not yet written; it belongs with the PEP.
+content: ✅ `test_no_response_bodies_in_audit`.
 
 Tokens are signed, not encrypted. Anyone holding a token can read every claim in
 it, so tokens carry no secrets and no personal data beyond what is necessary.
@@ -261,6 +264,36 @@ Nested `act` claims express an agent delegating to a sub-agent. The token format
 accommodates it; nothing implements or enforces depth limits. An agent cannot
 currently spawn a child that carries narrowed authority.
 
+### 8.7 Constraints are carried, not enforced
+
+**Severity: medium. Cut under the handbook's §8.4 order.**
+
+Grants accept `constraints` (`max_records`, `rate_limit_rpm`) and the token
+carries them, but the PEP does not yet count against them. Scope and policy are
+enforced on every request; volume is not. An agent inside its scope can make as
+many requests as it likes until the grant expires or is revoked.
+
+### 8.8 Unauthenticated requests to the PEP write audit entries
+
+**Severity: low.**
+
+Every denial is audited, including requests with no token or a forged one - that
+is deliberate, a denial with no trace is a hole in the evidence. The cost is that
+anyone who can reach the PEP can grow the audit chain, and every write takes the
+chain's advisory lock. Needs rate limiting in front of the PEP, or sampling of
+unauthenticated denials, before exposure beyond a private network.
+
+### 8.9 No web console yet
+
+**Severity: informational. Scheduling.**
+
+Approvals, sessions, the kill switch and audit search are available through the
+API and the terminal client `tools/gk.py`, which logs in through Keycloak and
+enforces exactly the same checks. The Keycloak `gatekeep-console` client has the
+password grant enabled so that client can log in from a terminal; that is a
+development convenience and must be off in any real deployment, where the
+console uses authorization code with PKCE.
+
 ---
 
 ## 9. Deployment requirements
@@ -278,8 +311,10 @@ logging product.
 
 This is a customer-side control. We specify it, and we verify it in our own
 demo environment. Be honest with customers that it is theirs to enforce.
-Status: ⬜ — Day 14 locks this down in Compose and verifies by attempting a
-bypass and failing.
+Status: 🔶 — the mock Salesforce refuses any request without the connector
+credential, which only the PEP holds, and the demo shows a direct call being
+refused. That is credential isolation, not network isolation: the application
+services run on the host, so Compose egress rules cannot yet be applied to them.
 
 ### 9.2 Database roles
 
@@ -311,7 +346,10 @@ What a customer can actually hand to an auditor. **[Day 8]** expands; **[Day
 14]** ships the export and the verifier CLI.
 
 - Every authorization decision, allowed or denied, is a chain entry with a
-  reason.
+  reason: approvals and refusals, token issuance and refusals, every PEP decision,
+  revocations and the kill switch.
+- `GET /v1/audit/verify` and `make audit-verify` walk the chain from genesis and
+  name the first altered or missing entry. ⬜ signed export bundle (cut, §8.4).
 - The chain is verifiable independently of us: given the export, the algorithm
   in §5.4 reproduces every hash.
 - Application logs and the audit chain are separate and must not be conflated.

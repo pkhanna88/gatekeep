@@ -1,6 +1,14 @@
-# Control plane service dependencies.
+# Control plane service dependencies. The token service, PEP and mock Salesforce
+# import the control plane's `app` package (settings, audit, revocation, fga), so
+# their requirements files include this one.
 #
 # Kept out of requirements-dev.txt on purpose: that file is "tooling everyone
-# needs", and not every engineer needs a Postgres driver to run the linter.
-# `make setup` and CI both install every services/*/requirements.txt on top.
+# needs". `make setup` and CI both install every services/*/requirements.txt on top.
 asyncpg==0.31.0
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
+redis==8.1.0
+argon2-cffi==25.1.0
+httpx==0.27.2
+pyjwt[crypto]==2.9.0

@@ -44,6 +44,26 @@ Run `make help` for everything else.
 
 ---
 
+## Run the demo
+
+With the stack up, migrated and seeded:
+
+```bash
+make services                      # terminal 1: control plane, token service, PEP, mock Salesforce
+make demo PAUSE=1                  # terminal 2: the full story, each step explained
+```
+
+There is no web console yet. Every step prints what is happening in plain
+English and what is happening underneath, then the real calls and results.
+[docs/DEMO.md](docs/DEMO.md) is the written walkthrough, including a live
+three-terminal version where you approve and kill a running agent by hand with
+`make gk`.
+
+`make test` runs the security tests in `tests/test_delegation.py` against the
+running services; they skip if `make services` is not up.
+
+---
+
 ## What is running
 
 | Service | Address | What it does |
@@ -53,6 +73,10 @@ Run `make help` for everything else.
 | OpenBao | 8200 | Holds the key we sign tokens with, so no service ever holds it. |
 | Postgres | 5432 | Grants, agents, and the audit trail. |
 | Redis | 6379 | Fast lookups for "has this been cancelled?" and rate counters. |
+| Control plane | 8000 | Agents ask for permission here; humans approve, revoke, hit the kill switch, read the audit trail. `make services` |
+| Token service | 8001 | Turns an approved grant into a five-minute token carrying both the human and the agent. `make services` |
+| PEP proxy | 8002 | The guard. Every agent request is checked, logged, then forwarded - or refused. `make services` |
+| Mock Salesforce | 8003 | Stand-in for Salesforce. Only answers the PEP. `make services` |
 
 To build intuition for the permission model before you write policy code, use:
 
@@ -95,17 +119,21 @@ immediately.
 ## Layout
 
 ```
-services/control-plane/   grants, agent registry, the audit trail
-services/token-service/   swaps an approved grant for a short-lived token
-services/pep-proxy/       every agent request passes through here
-apps/console/             the web UI: approvals, sessions, kill switch
-sdk/python/               what an agent developer actually imports
+services/control-plane/   :8000  agents, grants, approvals (Invariant 1), kill switch, audit API
+services/token-service/   :8001  swaps an approved grant for a 5-minute token (Invariant 2), JWKS
+services/pep-proxy/       :8002  every agent request passes through here
+services/mock-salesforce/ :8003  connector one's upstream; answers only the PEP
 policy/                   the permission model
 deploy/                   realm file and seed data
-tools/audit-verify/       walks the audit trail and finds tampering
+tools/demo.py             the narrated end-to-end demo
+tools/gk.py               the console, in a terminal (stand-in until apps/console exists)
+tools/agent.py            the demo agent: invoice reconciler for Northwind
+tools/audit_verify.py     walks the audit trail and finds tampering
 exercises/                onboarding exercises (Appendix A)
-docs/                     architecture, security, decisions
+docs/                     architecture, security, decisions, DEMO.md
 ```
+
+Not built yet: `apps/console/` (web UI) and `sdk/` - see docs/DECISIONS.md, Day 8.
 
 ---
 

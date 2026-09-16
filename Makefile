@@ -27,17 +27,25 @@ setup:                   ## One-time: build the virtual environment and install 
 	  BASE=python3; \
 	  echo ""; \
 	  echo "  WARNING: python3.12 not found, falling back to $$(python3 --version)."; \
-	  echo "  The services target Python 3.12. This will work for now, but"; \
-	  echo "  install 3.12 before service code lands:  brew install python@3.12"; \
+	  echo "  CI runs 3.12. Anything from 3.11 up works:  brew install python@3.12"; \
 	  echo ""; \
 	fi; \
+	BASE=$$($$BASE -c 'import sys; print(getattr(sys, "_base_executable", sys.executable))'); \
+	$$BASE -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' || { \
+	  echo ""; \
+	  echo "  $$BASE is $$($$BASE --version). Gatekeep needs Python 3.11 or newer."; \
+	  echo "  If a virtual environment is active, run 'deactivate' and try again."; \
+	  echo "  Otherwise:  brew install python@3.12"; \
+	  echo ""; \
+	  exit 1; }; \
+	echo "Using  $$BASE ($$($$BASE --version))"; \
 	rm -rf $(VENV); \
 	$$BASE -m venv $(VENV)
 	@$(PIP) install -q --upgrade pip
 	@$(PIP) install -q -r requirements-dev.txt
 	@for r in services/*/requirements.txt; do \
-	  [ -f "$$r" ] && $(PIP) install -q -r "$$r"; \
-	done; true
+	  $(PIP) install -q -r "$$r" || exit 1; \
+	done
 	@echo "Ready:  $$($(PY) --version)"
 	@echo "You do NOT need to activate anything. Just run 'make smoke'."
 
@@ -94,7 +102,7 @@ logs:                    ## Follow the logs
 ps:                      ## What is running
 	docker compose ps
 
-migrate: check-venv      ## Apply database schema  [INF stand-in - BE1 owns this]
+migrate: check-venv      ## Apply database schema (raw SQL, in order)
 	$(PY) services/control-plane/migrations/apply.py
 
 seed: check-venv         ## Load the policy model, tuples and demo data
@@ -123,8 +131,20 @@ fga-explain: check-venv  ## Ask the policy engine a question and see why it answ
 demo-week1: check-venv   ## Week 1 demo: identity, per-record policy, tamper-evident log
 	@$(PY) tools/week1_demo.py $(if $(PAUSE),--pause,)
 
-demo-reset:              ## Back to a clean demo state  [Day 18]
-	@echo "Not built yet. Owned by INF on Day 18."
+services: check-venv      ## Run control plane, token service, PEP and mock Salesforce (Ctrl+C stops)
+	@$(PY) tools/run_services.py
+
+demo: check-venv         ## The full narrative, explained step by step  (PAUSE=1 to stop between steps, BRIEF=1 for the timed run)
+	@$(PY) tools/demo.py $(if $(PAUSE),--pause,) $(if $(BRIEF),--brief,)
+
+demo-reset: check-venv   ## Back to a clean demo state: empty tables, fresh seed, reset mock Salesforce
+	@$(PY) tools/demo_reset.py
+
+audit-verify: check-venv ## Walk the audit chain and name the first broken entry
+	@$(PY) tools/audit_verify.py
+
+gk: check-venv           ## Console stand-in: make gk ARGS="pending --as priya"
+	@$(PY) tools/gk.py $(ARGS)
 
 urls:                    ## Where everything lives
 	@echo "Keycloak admin      http://localhost:8080          (admin / admin)"
@@ -133,6 +153,11 @@ urls:                    ## Where everything lives
 	@echo "Policy explainer    make fga-explain      (replaces the playground)"
 	@echo "OpenBao             http://localhost:8200          (token: root)"
 	@echo "Postgres            postgres://gatekeep:gatekeep@localhost:5432/gatekeep"
+	@echo ""
+	@echo "Control plane       http://localhost:8000/docs    (make services)"
+	@echo "Token service       http://localhost:8001/docs    JWKS at /.well-known/jwks.json"
+	@echo "PEP proxy           http://localhost:8002/proxy/salesforce/..."
+	@echo "Mock Salesforce     http://localhost:8003         (answers only the PEP)"
 	@echo ""
 	@echo "Test logins: priya@acme.test / priya   (analyst)"
 	@echo "             admin@acme.test / admin   (security admin)"

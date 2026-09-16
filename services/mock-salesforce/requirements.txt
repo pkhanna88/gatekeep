@@ -1,0 +1,2 @@
+# Shares the control plane's app package and its dependencies.
+-r ../control-plane/requirements.txt

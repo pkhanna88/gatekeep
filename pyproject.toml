@@ -6,12 +6,21 @@ exclude = [".venv", "apps/console", "sdk/typescript"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are meant to be called in argument defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Form"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "services"]
-# Lets tests import the control plane as `app.audit`. Note that section 4.6
-# gives every service an `app/` package, so when token-service and pep-proxy
-# land these will collide on this path and each service will need either a
-# distinct package name or its own pytest invocation. Fine while there is one.
-pythonpath = ["services/control-plane"]
+# Resolved the collision the earlier note predicted: only the control plane is
+# `app`. The other services use distinct package names (token_service,
+# pep_proxy, mock_salesforce) and import shared code from `app`. See
+# docs/DECISIONS.md.
+pythonpath = [
+  "services/control-plane",
+  "services/token-service",
+  "services/pep-proxy",
+  "services/mock-salesforce",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
