@@ -12,7 +12,7 @@ PIP    := $(VENV)/bin/pip
 PYTEST := $(VENV)/bin/pytest
 RUFF   := $(VENV)/bin/ruff
 
-.PHONY: help setup check-venv preflight dev down clean logs ps urls migrate seed test smoke lint fmt jwt fga-explain demo-week1 demo-reset
+.PHONY: help setup check-venv preflight dev down clean logs ps urls migrate seed test smoke test-rotation lint fmt jwt fga-explain demo-week1 demo-reset
 
 help:                    ## Show this list
 	@grep -E '^[a-z0-9-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -116,6 +116,9 @@ test: check-venv         ## Run the test suite
 
 smoke: check-venv        ## Just the 'is my machine working' check
 	$(PYTEST) tests/test_stack_smoke.py -v
+
+test-rotation: check-venv ## Rotate the signing key and prove tokens in flight still verify
+	$(PYTEST) tests/test_key_rotation.py -v
 
 lint: check-venv         ## Style and error checks, same as CI runs
 	$(RUFF) format --check .

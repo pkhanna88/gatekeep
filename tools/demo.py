@@ -635,8 +635,128 @@ def step_12_killswitch(agent: Agent, tokens) -> None:
     refused(agent.exchange(agent.grant_id, refresh=True), "grant_revoked")
 
 
-async def step_13_auditor(tokens) -> None:
-    step(13, "The auditor checks the evidence - and catches a cover-up")
+async def step_13_rotation() -> None:
+    step(13, "The key that stamps every token is replaced, mid-flight   (rotation)")
+    plain("""
+        Every token is stamped by a key held in a vault. That key is the most
+        sensitive thing we own - anyone holding it could forge a token granting
+        any access to anyone. So it has to be replaceable, on a schedule and in
+        an emergency, and replacing it must not break the tokens already in
+        people's hands.
+
+        Watch a key get replaced. The token stamped by the old key keeps working
+        until it expires. Nothing is coordinated, nothing drains, nothing goes
+        down.
+    """)
+    technical("""
+        A token's `kid` header IS the vault's key version - gk-signing-v<N> -
+        and JWKS publishes every live version, so a verifier selects the right
+        public half by name. Rotation is one API call and the old version stays
+        verifiable. Because agent tokens live five minutes, five minutes after a
+        rotation nothing signed by the old key still exists.
+
+        This runs against a key created for the demonstration, not the live
+        signing key. Rotating production here would leave the PEP's JWKS cache
+        stale for up to ten seconds - it refetches on an unknown `kid` at most
+        once per ten seconds, deliberately, so a forged `kid` cannot be used to
+        hammer the token service. The full procedure, the compromise path and
+        that caveat are in docs/KEY-ROTATION.md; `make test-rotation` asserts
+        these same properties on every CI run.
+    """)
+    live()
+
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+    bao = {"X-Vault-Token": settings.BAO_TOKEN}
+    key = "gk-signing-demo"
+    base = f"{settings.BAO_URL}/v1/transit"
+
+    def b64u(b: bytes) -> str:
+        return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+    def as_bytes(i: int) -> bytes:
+        return i.to_bytes((i.bit_length() + 7) // 8, "big")
+
+    def jwk_for(pem: str, kid: str) -> dict:
+        n = load_pem_public_key(pem.encode()).public_numbers()
+        return {
+            "kty": "RSA",
+            "use": "sig",
+            "alg": "RS256",
+            "kid": kid,
+            "n": b64u(as_bytes(n.n)),
+            "e": b64u(as_bytes(n.e)),
+        }
+
+    def sign(version: int) -> str:
+        header = {"alg": "RS256", "typ": "JWT", "kid": f"{key}-v{version}"}
+        payload = {"sub": PRINCIPAL, "act": {"sub": AGENT_ID}, "exp": 4102444800}
+        si = (
+            f"{b64u(json.dumps(header, separators=(',', ':')).encode())}."
+            f"{b64u(json.dumps(payload, separators=(',', ':')).encode())}"
+        )
+        r = httpx.post(
+            f"{base}/sign/{key}",
+            headers=bao,
+            json={
+                "input": base64.b64encode(si.encode()).decode(),
+                "key_version": version,
+                "hash_algorithm": "sha2-256",
+                "signature_algorithm": "pkcs1v15",
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        raw = base64.b64decode(r.json()["data"]["signature"].split(":", 2)[2])
+        return f"{si}.{b64u(raw)}"
+
+    def verifies(token: str, jwk: dict) -> bool:
+        try:
+            jwt.decode(token, jwt.PyJWK(jwk).key, algorithms=["RS256"])
+            return True
+        except Exception:
+            return False
+
+    def key_data() -> dict:
+        return httpx.get(f"{base}/keys/{key}", headers=bao, timeout=15).json()["data"]
+
+    httpx.post(f"{base}/keys/{key}", headers=bao, json={"type": "rsa-2048"}, timeout=30)
+    try:
+        print(f"  a key is created, and a token stamped with it   {bold(key + '-v1')}")
+        old_token = sign(1)
+        v1 = jwk_for(key_data()["keys"]["1"]["public_key"], f"{key}-v1")
+        check(verifies(old_token, v1), "the token did not verify when freshly signed")
+        outcome(True, "the token verifies against the published public key")
+
+        print()
+        print(dim(f"      POST /v1/transit/keys/{key}/rotate"))
+        httpx.post(f"{base}/keys/{key}/rotate", headers=bao, json={}, timeout=30).raise_for_status()
+        data = key_data()
+        latest = int(data["latest_version"])
+        check(latest == 2, f"rotation did not advance the key (now v{latest})")
+        print(f"  the key is replaced                            {bold(f'{key}-v{latest}')}")
+        published = ", ".join(f"{key}-v{v}" for v in sorted(data["keys"], key=int))
+        print(f"  JWKS now publishes                             {published}")
+
+        print()
+        v2 = jwk_for(data["keys"][str(latest)]["public_key"], f"{key}-v{latest}")
+        still = verifies(old_token, v1)
+        check(still, "a token issued before the rotation stopped verifying")
+        outcome(still, "the token issued BEFORE the rotation still verifies - nothing broke")
+        wrong = verifies(old_token, v2)
+        check(not wrong, "the old token verified against the NEW key - kid is not selecting")
+        outcome(not wrong, "and it does NOT verify against the new key - `kid` is doing real work")
+    finally:
+        httpx.post(
+            f"{base}/keys/{key}/config", headers=bao, json={"deletion_allowed": True}, timeout=15
+        )
+        httpx.delete(f"{base}/keys/{key}", headers=bao, timeout=15)
+        print()
+        print(dim("      demonstration key removed; the live signing key was never touched"))
+
+
+async def step_14_auditor(tokens) -> None:
+    step(14, "The auditor checks the evidence - and catches a cover-up")
     plain("""
         Months later an auditor asks: what did this agent do, on whose
         authority, and what was it stopped from doing? Everything above is in
@@ -729,8 +849,8 @@ async def step_13_auditor(tokens) -> None:
         await app_conn.close()
 
 
-def step_14_summary() -> None:
-    step(14, "What you just saw")
+def step_15_summary() -> None:
+    step(15, "What you just saw")
     print(
         wrap(
             """
@@ -747,6 +867,10 @@ def step_14_summary() -> None:
                            was caught and located.
 
         Instant revocation One button, every grant, refused on the next request.
+
+        Key custody        The signing key never leaves the vault, and can be
+                           replaced without invalidating the tokens already in
+                           flight. Procedure in docs/KEY-ROTATION.md.
     """,
             2,
         )
@@ -812,8 +936,9 @@ async def main(reset: bool) -> int:
     step_10_work(agent)
     await step_11_denials(agent)
     step_12_killswitch(agent, tokens)
-    await step_13_auditor(tokens)
-    step_14_summary()
+    await step_13_rotation()
+    await step_14_auditor(tokens)
+    step_15_summary()
 
     print("\n" + bold("=" * 78))
     if failures:
@@ -825,7 +950,7 @@ async def main(reset: bool) -> int:
     print(green("  Every step behaved as expected."))
     print(
         dim(
-            "  The audit chain was deliberately broken in step 13. "
+            "  The audit chain was deliberately broken in step 14. "
             "`make demo-reset` before the next run."
         )
     )

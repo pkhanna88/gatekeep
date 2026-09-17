@@ -294,6 +294,39 @@ password grant enabled so that client can log in from a terminal; that is a
 development convenience and must be off in any real deployment, where the
 console uses authorization code with PKCE.
 
+### 8.10 The bootstrap credential has no rotation or expiry
+
+**Severity: medium. Newly identified, Day 8.**
+
+An agent authenticates with a credential issued once at registration and stored
+as an argon2id hash. There is currently no way to rotate it, no expiry, and no
+way to revoke one agent's credential without suspending the agent record.
+
+That is a smaller version of the service-account problem this product exists to
+solve, which is uncomfortable and worth saying out loud. Three things limit the
+blast radius: the credential alone grants nothing — it only lets an agent
+exchange a grant a human already approved; the grant is itself scoped and
+expiring; and every exchange is audited with the agent id. So a leaked
+credential lets an attacker act only within grants a human has already approved
+for that specific agent, and every use is recorded.
+
+The real fix is SPIFFE-based attestation (8.1), which removes the static secret
+entirely rather than managing it better.
+
+### 8.11 The token service shares a database and code with the control plane
+
+**Severity: informational. Architectural, not a vulnerability.**
+
+The token service reads the `agents` and `grants` tables through the control
+plane's own modules rather than reimplementing credential verification and
+grant-state logic. The alternative was two implementations of "is this grant
+usable", which would drift, and the drift would be an authorization bug.
+
+Section 4.3's actual requirement — the control plane is the only *writer* of
+grants — holds. In a production deployment these become internal API calls or a
+shared library with its own release cycle, and the two services get separate
+database roles.
+
 ---
 
 ## 9. Deployment requirements
@@ -323,12 +356,31 @@ table's append-only guarantee is a Postgres grant, and a superuser bypasses
 permission checks entirely. Status: ✅ role created with `SELECT`/`INSERT` only,
 covered by a test.
 
-### 9.3 Key custody
+### 9.3 Key custody and rotation
 
 The token-signing key lives in OpenBao's transit engine and is never released.
 The token service sends a payload and receives a signature; it does not hold the
-private key at any point. Status: ✅ key exists, is non-exportable, and a test
-confirms an export attempt is refused. **[Day 8]** — rotation procedure.
+private key at any point, and there is no code path that could — transit has no
+endpoint that returns it. A test attempts an export on every CI run and expects
+to be refused.
+
+Rotation is implemented and documented in [KEY-ROTATION.md](KEY-ROTATION.md). A
+token's `kid` is the transit key version stated out loud, JWKS publishes every
+live version, and `tests/test_key_rotation.py` proves that a token minted before
+a rotation still verifies afterwards — against its own key version, and not
+against the new one. Because agent tokens live five minutes, rotating requires
+no coordination with anything: five minutes after a rotation nothing signed
+under the old key still exists.
+
+The runbook also covers the compromise case, which rotation alone does not
+solve: rotating stops new tokens being signed with the old key but does nothing
+about tokens an attacker already minted. Raising `min_decryption_version`
+invalidates everything signed under earlier versions immediately. That is a
+deliberate blast radius, not a scalpel, and it is paired with the kill switch.
+
+Status: ✅ implemented, documented and tested. **[Day 19]** — the production
+policy documents scoping the token service to signing only, separate from the
+operator credential that can rotate.
 
 ### 9.4 Identity provider
 

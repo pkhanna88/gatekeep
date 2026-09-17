@@ -36,6 +36,19 @@ def kid_for(version: int) -> str:
     return f"{settings.SIGNING_KEY}-v{version}"
 
 
+def version_from_kid(kid: str) -> int:
+    """Inverse of kid_for. Raises on a kid this service did not mint.
+
+    Rotation tooling needs to go from a token back to the key version that
+    signed it - docs/KEY-ROTATION.md section 8 walks through a verifier
+    rejecting a valid token, and "which version was this?" is the first question.
+    """
+    prefix = f"{settings.SIGNING_KEY}-v"
+    if not kid.startswith(prefix):
+        raise ValueError(f"kid {kid!r} was not issued by this service")
+    return int(kid[len(prefix) :])
+
+
 class TransitSigner:
     def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client or httpx.AsyncClient(
@@ -53,8 +66,19 @@ class TransitSigner:
             )
         return r.json()["data"]
 
-    async def sign_jwt(self, payload: dict) -> str:
-        version = int((await self._key())["latest_version"])
+    async def latest_version(self) -> int:
+        """The version new tokens are being signed with right now."""
+        return int((await self._key())["latest_version"])
+
+    async def sign_jwt(self, payload: dict, *, version: int | None = None) -> str:
+        """Sign with the current key, or a pinned version.
+
+        Pinning is for tests and for the rotation runbook's verification step -
+        confirming a specific key version still signs before cutting over to it.
+        Production always passes None and gets the latest.
+        """
+        if version is None:
+            version = int((await self._key())["latest_version"])
         header = {"alg": "RS256", "typ": "JWT", "kid": kid_for(version)}
         signing_input = (
             f"{b64url(json.dumps(header, separators=(',', ':')).encode())}."
